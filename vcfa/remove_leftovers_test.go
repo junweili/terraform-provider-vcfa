@@ -105,7 +105,19 @@ func removeLeftovers(tmClient *govcd.VCDClient, verbose, isFinalCleanup bool) er
 			return fmt.Errorf("error retrieving All Regional Networking Settings: %s", err)
 		}
 		for _, one := range all {
-			toBeDeleted := shouldDeleteEntity(alsoDelete, doNotDelete, one.TmRegionalNetworkingSetting.Name, "vcfa_org_regional_networking", 3, verbose)
+			name := one.TmRegionalNetworkingSetting.Name
+			regionName := one.TmRegionalNetworkingSetting.RegionRef.Name
+			toBeDeleted := shouldDeleteEntity(alsoDelete, doNotDelete, name, "vcfa_org_regional_networking", 3, verbose)
+			// Regional Networking Setting names are auto-generated from the Org and Region names
+			// when left unset (e.g. "ProviderConsumptionOrg<region>"), so they may not start with
+			// "test" even when backing a test Region. Fall back to the backing Region's name so
+			// these are not left behind, blocking the test Region from being deleted.
+			if !toBeDeleted && isTest.MatchString(regionName) && !inList(doNotDelete, name, "vcfa_org_regional_networking") {
+				toBeDeleted = true
+				if verbose {
+					fmt.Printf("\t\t\t[vcfa_org_regional_networking] %s (DELETE, backs test Region %s)\n", name, regionName)
+				}
+			}
 			if toBeDeleted {
 				fmt.Printf("\t REMOVING All %s Settings %s\n", labelVcfaRegionalNetworkingSetting, one.TmRegionalNetworkingSetting.Name)
 				err := one.Delete()
